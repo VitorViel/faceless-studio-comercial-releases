@@ -1,0 +1,36 @@
+# "Está no ar?" do Faceless Studio (29/10/2026). Roda a cada 10 min e falha quando o servidor (api.studiofaceless.com.br/saude,
+# que também confere o banco) ou o site não respondem: o GitHub manda e-mail de "run failed" para o dono do repositório.
+# Atenção: o GitHub desliga agendamentos de repositório sem commits há 60 dias; cada versão publicada aqui conta como atividade.
+name: Está no ar?
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  saude:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Servidor (api.studiofaceless.com.br/saude)
+        run: |
+          for i in 1 2 3; do
+            body=$(curl -s --max-time 20 https://api.studiofaceless.com.br/saude || true)
+            if [ "$body" = "ok" ]; then echo "servidor ok"; exit 0; fi
+            echo "tentativa $i: resposta '$body'"
+            sleep 30
+          done
+          echo "::error::O servidor do Faceless Studio não respondeu 'ok' em 3 tentativas (api.studiofaceless.com.br/saude). Veja o Cloudflare (Worker faceless-gateway) e o Supabase."
+          exit 1
+      - name: Site (studiofaceless.com.br)
+        if: always()
+        run: |
+          for i in 1 2; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://studiofaceless.com.br/ || echo 000)
+            if [ "$code" = "200" ]; then echo "site ok"; exit 0; fi
+            echo "tentativa $i: HTTP $code"
+            sleep 30
+          done
+          echo "::error::O site studiofaceless.com.br respondeu HTTP $code. Veja o Cloudflare (Worker faceless-site)."
+          exit 1
